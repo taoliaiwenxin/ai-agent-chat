@@ -1,11 +1,21 @@
 import { NextRequest } from 'next/server'
 import { callModel, getModelConfig, Message } from '@/lib/models'
-import { executeSkill } from '@/skills'
+import { executeSkill, initSkills, getSkills } from '@/skills'
+
+// 全局初始化标志
+let skillsInitialized = false
 
 export async function POST(req: NextRequest) {
   try {
+    // 首次调用时初始化 skills（包括从 Markdown 加载）
+    if (!skillsInitialized) {
+      await initSkills()
+      skillsInitialized = true
+    }
+
     const { messages } = await req.json()
     const config = getModelConfig()
+    const skills = getSkills()
 
     console.log('Chat API called with provider:', config.provider, 'model:', config.model)
 
@@ -22,8 +32,8 @@ export async function POST(req: NextRequest) {
       content: m.content
     }))
 
-    // 第一次调用模型
-    const response = await callModel(formattedMessages, config)
+    // 第一次调用模型（传入已加载的 skills）
+    const response = await callModel(formattedMessages, config, skills)
     console.log('Model response:', response)
 
     // 记录工具调用
@@ -71,7 +81,7 @@ export async function POST(req: NextRequest) {
         { role: 'user', content: JSON.stringify(toolResults) }
       ]
 
-      const followUpResponse = await callModel(followUpMessages, config)
+      const followUpResponse = await callModel(followUpMessages, config, skills)
 
       return Response.json({
         content: followUpResponse.content,

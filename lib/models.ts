@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
-import { skills } from '@/skills'
+import { SkillDefinition } from '@/skills'
 
 export type ModelProvider = 'claude' | 'openai' | 'deepseek' | 'ollama'
 
@@ -64,7 +64,7 @@ export function getModelConfig(): ModelConfig {
 }
 
 // 构建工具定义（统一格式）
-function buildTools() {
+function buildTools(skills: SkillDefinition[]) {
   return skills.map(skill => ({
     name: skill.name,
     description: skill.description,
@@ -75,11 +75,12 @@ function buildTools() {
 // 调用 Claude
 async function callClaude(
   messages: Message[],
-  config: ModelConfig
+  config: ModelConfig,
+  skills: SkillDefinition[]
 ): Promise<ModelResponse> {
   const client = new Anthropic({ apiKey: config.apiKey })
 
-  const tools = buildTools().map(t => ({
+  const tools = buildTools(skills).map(t => ({
     name: t.name,
     description: t.description,
     input_schema: {
@@ -122,7 +123,8 @@ async function callClaude(
 // 调用 OpenAI/DeepSeek/Ollama（格式相同）
 async function callOpenAICompatible(
   messages: Message[],
-  config: ModelConfig
+  config: ModelConfig,
+  skills: SkillDefinition[]
 ): Promise<ModelResponse> {
   const client = new OpenAI({
     apiKey: config.apiKey || 'ollama',
@@ -131,7 +133,7 @@ async function callOpenAICompatible(
       : 'https://api.openai.com/v1'
   })
 
-  const tools = buildTools().map(t => ({
+  const tools = buildTools(skills).map(t => ({
     type: 'function' as const,
     function: {
       name: t.name,
@@ -181,19 +183,23 @@ async function callOpenAICompatible(
 // 统一调用接口
 export async function callModel(
   messages: Message[],
-  config?: ModelConfig
+  config?: ModelConfig,
+  skills?: SkillDefinition[]
 ): Promise<ModelResponse> {
   const cfg = config || getModelConfig()
 
   console.log(`Using model: ${cfg.provider} (${cfg.model})`)
 
+  // 如果没有提供 skills，使用空数组（无工具调用）
+  const skillList = skills || []
+
   switch (cfg.provider) {
     case 'claude':
-      return callClaude(messages, cfg)
+      return callClaude(messages, cfg, skillList)
     case 'openai':
     case 'deepseek':
     case 'ollama':
-      return callOpenAICompatible(messages, cfg)
+      return callOpenAICompatible(messages, cfg, skillList)
     default:
       throw new Error(`Unknown provider: ${cfg.provider}`)
   }
