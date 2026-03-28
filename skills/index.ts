@@ -1,6 +1,7 @@
 import { fileSkill } from './file'
 import { searchSkill } from './search'
 import { createWeatherSkill } from './weather'
+import { createUIDesignSkill } from './ui-design'
 
 export interface SkillParameter {
   type: string
@@ -25,12 +26,15 @@ const syncSkills: SkillDefinition[] = [
   searchSkill
 ]
 
-// 异步加载所有 skills（包括从 Markdown 定义的）
+// 异步加载所有 skills（包括从 Markdown 读取元数据的）
 export async function loadSkills(): Promise<SkillDefinition[]> {
-  // 异步加载天气 skill（从 Markdown 读取元数据）
-  const weatherSkill = await createWeatherSkill()
+  // 异步加载需要从 Markdown 读取元数据的 skills
+  const [weatherSkill, uiDesignSkill] = await Promise.all([
+    createWeatherSkill(),
+    createUIDesignSkill()
+  ])
 
-  return [...syncSkills, weatherSkill]
+  return [...syncSkills, weatherSkill, uiDesignSkill]
 }
 
 // 全局 skills 缓存
