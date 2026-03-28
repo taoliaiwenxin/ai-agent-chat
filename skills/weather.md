@@ -23,6 +23,7 @@ parameters:
 - 天气状况（晴、多云、雨等）
 - 湿度
 - 风速
+- 提供穿衣的建议
 
 ## 使用示例
 
@@ -35,11 +36,9 @@ parameters:
 
 ## 实现说明
 
-由于这是一个演示项目，此 skill 返回模拟数据。
-在生产环境中，应该接入真实的天气 API，如：
-- OpenWeatherMap API
-- 和风天气 API
-- 高德天气 API
+此 skill 使用 **wttr.in** 免费天气服务获取真实天气数据，无需 API Key。
+
+数据来源：https://wttr.in
 
 ## 返回值示例
 
@@ -51,6 +50,8 @@ parameters:
   "condition": "多云",
   "humidity": "45%",
   "windSpeed": "3级",
-  "updateTime": "2024-01-15 14:30"
+  "suggestion": "天气舒适，建议穿长袖衬衫、薄外套或 T 恤。",
+  "updateTime": "2024-01-15 14:30",
+  "source": "wttr.in"
 }
 ```

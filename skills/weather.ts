@@ -1,37 +1,68 @@
 import { SkillDefinition } from './index'
 import { parseMarkdownSkill } from './markdown-parser'
 
-// 模拟天气数据（实际项目中应调用真实天气 API）
-const MOCK_WEATHER_DATA: Record<string, any> = {
-  '北京': {
-    temperature: 22,
-    condition: '多云',
-    humidity: '45%',
-    windSpeed: '3级'
-  },
-  '上海': {
-    temperature: 25,
-    condition: '小雨',
-    humidity: '78%',
-    windSpeed: '4级'
-  },
-  '广州': {
-    temperature: 30,
-    condition: '晴',
-    humidity: '65%',
-    windSpeed: '2级'
-  },
-  '深圳': {
-    temperature: 29,
-    condition: '晴',
-    humidity: '60%',
-    windSpeed: '2级'
-  },
-  '杭州': {
-    temperature: 24,
-    condition: '多云',
-    humidity: '55%',
-    windSpeed: '3级'
+/**
+ * 从 wttr.in 获取真实天气数据
+ * 这是一个免费的天气服务，无需 API Key
+ */
+async function fetchRealWeather(city: string): Promise<{
+  temperature: number
+  condition: string
+  humidity: string
+  windSpeed: string
+  suggestion: string
+} | null> {
+  try {
+    // 使用 wttr.in 获取天气数据
+    const response = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`, {
+      headers: {
+        'User-Agent': 'curl/7.68.0'  // wttr.in 需要 User-Agent
+      }
+    })
+
+    if (!response.ok) {
+      console.error('Weather API error:', response.status)
+      return null
+    }
+
+    const data = await response.json()
+
+    // 解析当前天气
+    const current = data.current_condition[0]
+    const tempC = parseInt(current.temp_C)
+    const humidity = current.humidity
+    const windKmph = current.windspeedKmph
+    const condition = current.lang_zh?.[0]?.value || current.weatherDesc?.[0]?.value || '未知'
+
+    // 根据温度生成穿衣建议
+    let suggestion = ''
+    if (tempC < 5) {
+      suggestion = '天气寒冷，建议穿厚外套、羽绒服，注意保暖。'
+    } else if (tempC < 15) {
+      suggestion = '天气较凉，建议穿夹克、风衣或薄毛衣。'
+    } else if (tempC < 25) {
+      suggestion = '天气舒适，建议穿长袖衬衫、薄外套或 T 恤。'
+    } else {
+      suggestion = '天气炎热，建议穿短袖、短裤，注意防晒和补水。'
+    }
+
+    // 根据天气状况调整建议
+    if (condition.includes('雨') || condition.includes('Rain')) {
+      suggestion += ' 外面在下雨，记得带伞。'
+    } else if (condition.includes('雪') || condition.includes('Snow')) {
+      suggestion += ' 有雪，穿防滑鞋。'
+    }
+
+    return {
+      temperature: tempC,
+      condition,
+      humidity: `${humidity}%`,
+      windSpeed: `${Math.round(parseInt(windKmph) / 3.6)}级`,  // 转换为级
+      suggestion
+    }
+  } catch (error) {
+    console.error('Failed to fetch weather:', error)
+    return null
   }
 }
 
@@ -51,18 +82,14 @@ export async function createWeatherSkill(): Promise<SkillDefinition> {
     execute: async (input: { city: string; units?: string }) => {
       const { city, units = 'celsius' } = input
 
-      // 获取天气数据（实际项目中这里应该调用天气 API）
-      const data = MOCK_WEATHER_DATA[city]
+      // 尝试获取真实天气数据
+      const weatherData = await fetchRealWeather(city)
 
-      if (!data) {
-        // 如果城市不在模拟数据中，生成随机数据
-        const randomTemp = Math.floor(Math.random() * 20) + 10 // 10-30度
-        const conditions = ['晴', '多云', '小雨', '阴']
-        const randomCondition = conditions[Math.floor(Math.random() * conditions.length)]
-
-        let temperature = randomTemp
+      if (weatherData) {
+        // 转换温度单位
+        let temperature = weatherData.temperature
         if (units === 'fahrenheit') {
-          temperature = Math.round(randomTemp * 9 / 5 + 32)
+          temperature = Math.round(temperature * 9 / 5 + 32)
         }
 
         return {
@@ -70,28 +97,20 @@ export async function createWeatherSkill(): Promise<SkillDefinition> {
           city,
           temperature,
           units,
-          condition: randomCondition,
-          humidity: `${Math.floor(Math.random() * 40) + 40}%`,
-          windSpeed: `${Math.floor(Math.random() * 5) + 1}级`,
+          condition: weatherData.condition,
+          humidity: weatherData.humidity,
+          windSpeed: weatherData.windSpeed,
+          suggestion: weatherData.suggestion,
           updateTime: new Date().toLocaleString('zh-CN'),
-          note: '此为模拟数据，请接入真实天气 API 获取准确信息'
+          source: 'wttr.in'
         }
       }
 
-      // 转换温度单位
-      let temperature = data.temperature
-      if (units === 'fahrenheit') {
-        temperature = Math.round(temperature * 9 / 5 + 32)
-      }
-
+      // 如果获取失败，返回错误信息
       return {
-        success: true,
+        success: false,
+        error: `无法获取 ${city} 的天气信息，请检查城市名称是否正确`,
         city,
-        temperature,
-        units,
-        condition: data.condition,
-        humidity: data.humidity,
-        windSpeed: data.windSpeed,
         updateTime: new Date().toLocaleString('zh-CN')
       }
     }

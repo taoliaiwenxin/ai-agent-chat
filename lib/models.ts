@@ -143,6 +143,15 @@ async function callOpenAICompatible(
   }))
 
   try {
+    let tmp = {
+      model: config.model,
+      messages,
+      tools,
+      tool_choice: 'auto'
+    };
+
+    console.log("===============", tmp);
+
     const response = await client.chat.completions.create({
       model: config.model,
       messages,
