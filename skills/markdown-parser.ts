@@ -26,8 +26,8 @@ export async function parseMarkdownSkill(mdPath: string): Promise<MarkdownSkillM
   const fullPath = path.join(process.cwd(), mdPath)
   const content = await fs.readFile(fullPath, 'utf-8')
 
-  // 解析 YAML frontmatter (--- 之间的内容)
-  const match = content.match(/^---\n([\s\S]*?)\n---/)
+  // 解析 YAML frontmatter (--- 之间的内容)，支持 LF 和 CRLF
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!match) {
     throw new Error(`Invalid markdown skill file: ${mdPath}, no YAML frontmatter found`)
   }
