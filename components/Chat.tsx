@@ -113,16 +113,43 @@ export default function Chat() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [isAtBottom, setIsAtBottom] = useState(true)
   const abortControllerRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  // 检查是否在底部（阈值 100px）
+  const checkIsAtBottom = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (!container) return true
 
+    const threshold = 100
+    const scrollBottom = container.scrollTop + container.clientHeight
+    return container.scrollHeight - scrollBottom < threshold
+  }, [])
+
+  // 滚动到底部
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior })
+  }, [])
+
+  // 处理滚动事件
+  const handleScroll = useCallback(() => {
+    const atBottom = checkIsAtBottom()
+    setIsAtBottom(atBottom)
+  }, [checkIsAtBottom])
+
+  // 智能滚动：只有在用户在底部时才自动滚动
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, streamingContent])
+    if (isAtBottom) {
+      scrollToBottom('smooth')
+    }
+  }, [messages, streamingContent, isAtBottom, scrollToBottom])
+
+  // 初始滚动到底部
+  useEffect(() => {
+    scrollToBottom('auto')
+  }, [])
 
   // 停止流式生成
   const stopStreaming = useCallback(() => {
@@ -283,7 +310,11 @@ export default function Chat() {
         <p style={styles.subtitle}>支持文件操作、搜索等功能</p>
       </div>
 
-      <div style={styles.messages}>
+      <div
+        ref={messagesContainerRef}
+        style={styles.messages}
+        onScroll={handleScroll}
+      >
         {messages.length === 0 && (
           <div style={styles.empty}>
             <p>开始与 AI Agent 对话</p>
@@ -340,6 +371,16 @@ export default function Chat() {
           </div>
         )}
         <div ref={messagesEndRef} />
+
+        {/* 滚动到底部按钮 */}
+        {!isAtBottom && (
+          <button
+            style={styles.scrollToBottomButton}
+            onClick={() => scrollToBottom('smooth')}
+          >
+            ↓ 滚动到底部
+          </button>
+        )}
       </div>
 
       <div style={styles.inputArea}>
@@ -562,5 +603,21 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '4px',
     cursor: 'pointer',
     transition: 'background-color 0.2s'
+  },
+  scrollToBottomButton: {
+    position: 'fixed',
+    bottom: '100px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    padding: '8px 16px',
+    backgroundColor: '#007bff',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '20px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+    zIndex: 100,
+    transition: 'all 0.2s ease'
   }
 }
