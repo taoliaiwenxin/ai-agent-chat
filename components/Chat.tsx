@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -13,6 +15,87 @@ interface ToolCall {
   name: string
   input: Record<string, any>
   output: any
+}
+
+// 代码块解析函数
+function parseContent(content: string): Array<{ type: 'text' | 'code'; content: string; language?: string }> {
+  const parts: Array<{ type: 'text' | 'code'; content: string; language?: string }> = []
+  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
+  let lastIndex = 0
+  let match
+
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    // 添加代码块前的文本
+    if (match.index > lastIndex) {
+      parts.push({
+        type: 'text',
+        content: content.slice(lastIndex, match.index)
+      })
+    }
+
+    // 添加代码块
+    parts.push({
+      type: 'code',
+      language: match[1] || 'text',
+      content: match[2].trim()
+    })
+
+    lastIndex = match.index + match[0].length
+  }
+
+  // 添加剩余的文本
+  if (lastIndex < content.length) {
+    parts.push({
+      type: 'text',
+      content: content.slice(lastIndex)
+    })
+  }
+
+  return parts.length > 0 ? parts : [{ type: 'text', content }]
+}
+
+// 渲染内容组件（支持代码高亮）
+function MessageContent({ content }: { content: string }) {
+  const parts = parseContent(content)
+
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (part.type === 'code') {
+          return (
+            <div key={index} style={styles.codeBlock}>
+              <div style={styles.codeHeader}>
+                <span style={styles.codeLanguage}>{part.language}</span>
+                <button
+                  style={styles.copyButton}
+                  onClick={() => navigator.clipboard.writeText(part.content)}
+                >
+                  复制
+                </button>
+              </div>
+              <SyntaxHighlighter
+                language={part.language}
+                style={vscDarkPlus}
+                customStyle={{
+                  margin: 0,
+                  borderRadius: '0 0 8px 8px',
+                  fontSize: '13px',
+                  lineHeight: '1.5'
+                }}
+              >
+                {part.content}
+              </SyntaxHighlighter>
+            </div>
+          )
+        }
+        return (
+          <span key={index} style={{ whiteSpace: 'pre-wrap' }}>
+            {part.content}
+          </span>
+        )
+      })}
+    </>
+  )
 }
 
 interface StreamEvent {
@@ -217,7 +300,7 @@ export default function Chat() {
               {msg.role === 'user' ? '👤 你' : '🤖 AI'}
             </div>
             <div style={styles.messageContent}>
-              {msg.content}
+              <MessageContent content={msg.content} />
             </div>
             {msg.toolCalls && msg.toolCalls.length > 0 && (
               <div style={styles.toolCalls}>
@@ -239,7 +322,9 @@ export default function Chat() {
         {loading && streamingContent && (
           <div style={{...styles.message, ...styles.assistantMessage}}>
             <div style={styles.messageHeader}>🤖 AI</div>
-            <div style={styles.messageContent}>{streamingContent}</div>
+            <div style={styles.messageContent}>
+              <MessageContent content={streamingContent} />
+            </div>
             <div style={styles.streamingIndicator}>
               <span style={styles.cursor}>▊</span>
             </div>
@@ -447,5 +532,35 @@ const styles: Record<string, React.CSSProperties> = {
   cursor: {
     animation: 'blink 1s infinite',
     color: '#007bff'
+  },
+  codeBlock: {
+    margin: '12px 0',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    backgroundColor: '#1e1e1e'
+  },
+  codeHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 12px',
+    backgroundColor: '#2d2d2d',
+    borderBottom: '1px solid #3d3d3d'
+  },
+  codeLanguage: {
+    fontSize: '12px',
+    color: '#9cdcfe',
+    textTransform: 'uppercase' as const,
+    fontWeight: 'bold'
+  },
+  copyButton: {
+    padding: '4px 12px',
+    fontSize: '12px',
+    backgroundColor: '#3d3d3d',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s'
   }
 }
