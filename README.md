@@ -5,6 +5,7 @@
 ## 功能特点
 
 - 💬 聊天界面：简洁的对话式 UI
+- ⚡ **流式输出**：基于 SSE 实时显示 AI 回复，支持随时停止生成
 - 🔧 Skill 系统：支持文件操作和搜索功能
 - 🤖 多模型支持：Claude / OpenAI / DeepSeek / Ollama
 - 🏠 本地运行：数据安全，API Key 仅在服务端使用
@@ -118,9 +119,39 @@ AI_MODEL=claude    # 切换到 Claude（默认）
 - API Key 仅在服务器端使用，不会暴露到浏览器
 - 建议不要将敏感文件放在项目目录中
 
+## 流式渲染实现
+
+### 后端 SSE 接口 (`app/api/chat/stream/route.ts`)
+
+- 使用 Server-Sent Events (SSE) 协议推送实时数据
+- 支持多模型流式输出：Claude、OpenAI、DeepSeek、Ollama
+- 流式事件类型：
+  - `start` - 流开始
+  - `delta` - 文本片段（逐字/逐句返回）
+  - `tool_start` - 工具调用开始
+  - `tool_result` - 工具执行结果
+  - `tool_error` - 工具执行错误
+  - `thinking` - 有工具调用时的二次调用提示
+  - `done` - 流结束
+  - `error` - 错误信息
+
+### 前端流式接收 (`components/Chat.tsx`)
+
+- 使用 `fetch` + `ReadableStream` 读取 SSE 数据
+- 实时渲染 AI 回复内容，带闪烁光标效果
+- 支持**停止生成**功能（AbortController 中断请求）
+- 工具调用结果在流完成后统一显示
+
+### 使用体验
+
+- AI 回复内容逐字显示，无需等待完整响应
+- 生成过程中可随时点击"停止"按钮中断
+- 网络中断或错误时自动保存已生成内容
+
 ## 技术栈
 
 - Next.js 14
 - React 18
 - TypeScript
 - Anthropic / OpenAI SDK
+- Server-Sent Events (SSE)

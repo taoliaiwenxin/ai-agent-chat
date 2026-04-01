@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   toolCalls?: ToolCall[]
+  isStreaming?: boolean
 }
 
 interface ToolCall {
@@ -14,10 +15,22 @@ interface ToolCall {
   output: any
 }
 
+interface StreamEvent {
+  type: 'start' | 'delta' | 'tool_start' | 'tool_result' | 'tool_error' | 'thinking' | 'done' | 'error'
+  content?: string
+  name?: string
+  input?: any
+  output?: any
+  error?: string
+  toolCalls?: ToolCall[]
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streamingContent, setStreamingContent] = useState('')
+  const abortControllerRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -26,7 +39,16 @@ export default function Chat() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages])
+  }, [messages, streamingContent])
+
+  // 停止流式生成
+  const stopStreaming = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setLoading(false)
+  }, [])
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return
@@ -35,9 +57,13 @@ export default function Chat() {
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setLoading(true)
+    setStreamingContent('')
+
+    // 创建 abort controller 用于取消请求
+    abortControllerRef.current = new AbortController()
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -45,35 +71,118 @@ export default function Chat() {
             role: m.role,
             content: m.content
           }))
-        })
+        }),
+        signal: abortControllerRef.current.signal
       })
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`)
       }
 
-      const data = await res.json()
-      console.log('API response:', data)
-
-      if (data.error) {
-        throw new Error(data.error)
+      if (!res.body) {
+        throw new Error('No response body')
       }
 
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: data.content || '（无回复内容）',
-        toolCalls: data.toolCalls
-      }
+      // 读取 SSE 流
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let accumulatedContent = ''
+      const toolCalls: ToolCall[] = []
 
-      setMessages(prev => [...prev, assistantMessage])
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') continue
+
+            try {
+              const event: StreamEvent = JSON.parse(data)
+
+              switch (event.type) {
+                case 'start':
+                  // 流开始
+                  break
+
+                case 'delta':
+                  if (event.content) {
+                    accumulatedContent += event.content
+                    setStreamingContent(accumulatedContent)
+                  }
+                  break
+
+                case 'tool_start':
+                  // 工具调用开始
+                  break
+
+                case 'tool_result':
+                  if (event.name && event.input !== undefined) {
+                    toolCalls.push({
+                      name: event.name,
+                      input: event.input,
+                      output: event.output
+                    })
+                  }
+                  break
+
+                case 'tool_error':
+                  if (event.name) {
+                    toolCalls.push({
+                      name: event.name,
+                      input: {},
+                      output: { error: event.error }
+                    })
+                  }
+                  break
+
+                case 'thinking':
+                  // 模型正在思考（有工具调用后的二次调用）
+                  break
+
+                case 'done':
+                  // 流完成，保存最终消息
+                  setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: accumulatedContent || '（无回复内容）',
+                    toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+                  }])
+                  setStreamingContent('')
+                  break
+
+                case 'error':
+                  throw new Error(event.error || 'Stream error')
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
     } catch (error: any) {
-      const errorMessage = error?.message || '未知错误'
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `抱歉，发生了错误：${errorMessage}`
-      }])
+      if (error.name === 'AbortError') {
+        // 用户主动取消，保存已生成的内容
+        if (streamingContent) {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: streamingContent
+          }])
+          setStreamingContent('')
+        }
+      } else {
+        const errorMessage = error?.message || '未知错误'
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `抱歉，发生了错误：${errorMessage}`
+        }])
+      }
     } finally {
       setLoading(false)
+      abortControllerRef.current = null
     }
   }
 
@@ -126,7 +235,19 @@ export default function Chat() {
           </div>
         ))}
 
-        {loading && (
+        {/* 流式内容显示 */}
+        {loading && streamingContent && (
+          <div style={{...styles.message, ...styles.assistantMessage}}>
+            <div style={styles.messageHeader}>🤖 AI</div>
+            <div style={styles.messageContent}>{streamingContent}</div>
+            <div style={styles.streamingIndicator}>
+              <span style={styles.cursor}>▊</span>
+            </div>
+          </div>
+        )}
+
+        {/* 加载动画 */}
+        {loading && !streamingContent && (
           <div style={styles.loading}>
             <span style={styles.dot}>●</span>
             <span style={styles.dot}>●</span>
@@ -142,23 +263,48 @@ export default function Chat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入消息，按 Enter 发送..."
+          placeholder={loading ? "AI 正在思考..." : "输入消息，按 Enter 发送..."}
           rows={2}
           disabled={loading}
         />
-        <button
-          style={{
-            ...styles.button,
-            ...(loading ? styles.buttonDisabled : {})
-          }}
-          onClick={sendMessage}
-          disabled={loading}
-        >
-          发送
-        </button>
+        {loading ? (
+          <button
+            style={{...styles.button, ...styles.stopButton}}
+            onClick={stopStreaming}
+          >
+            停止
+          </button>
+        ) : (
+          <button
+            style={styles.button}
+            onClick={sendMessage}
+          >
+            发送
+          </button>
+        )}
       </div>
     </div>
   )
+}
+
+// 添加全局动画样式
+if (typeof document !== 'undefined') {
+  const styleId = 'chat-animations'
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style')
+    style.id = styleId
+    style.textContent = `
+      @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+    `
+    document.head.appendChild(style)
+  }
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -289,5 +435,17 @@ const styles: Record<string, React.CSSProperties> = {
   buttonDisabled: {
     backgroundColor: '#ccc',
     cursor: 'not-allowed'
+  },
+  stopButton: {
+    backgroundColor: '#dc3545',
+    animation: 'pulse 1.5s infinite'
+  },
+  streamingIndicator: {
+    marginTop: '8px',
+    opacity: 0.6
+  },
+  cursor: {
+    animation: 'blink 1s infinite',
+    color: '#007bff'
   }
 }
