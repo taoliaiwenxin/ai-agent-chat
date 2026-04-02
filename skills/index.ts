@@ -58,7 +58,10 @@ export async function initSkills(): Promise<void> {
   console.log('Skills loaded:', skillsCache.map(s => s.name).join(', '))
 }
 
-// 执行 skill
+// 【Skill 执行器】由 SSE 流调用（app/api/chat/stream/route.ts:254）
+// 当 LLM 决定调用工具时，会通过此函数查找并执行对应的 skill
+// - name: skill 名称（与 tools 中定义的 name 匹配）
+// - input: LLM 生成的参数对象
 export async function executeSkill(name: string, input: any): Promise<any> {
   const skills = getSkills()
   const skill = skills.find(s => s.name === name)

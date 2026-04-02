@@ -2,17 +2,24 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { getModelConfig, Message } from '@/lib/models'
+// 【Skill工具入口】从 skills/index.ts 导入 Skill 管理函数
+// - initSkills: 初始化并加载所有 skill 定义
+// - getSkills: 获取已加载的 skill 列表（用于构建 tool schema）
+// - executeSkill: 【核心】执行具体的 skill 工具调用
 import { executeSkill, initSkills, getSkills } from '@/skills'
 
 // 全局初始化标志
 let skillsInitialized = false
 
-// 构建 SSE 数据格式
+// 【SSE 数据格式】构建 Server-Sent Events 格式的数据包
+// 每行以 "data: " 开头，以 "\n\n" 结束，符合 SSE 协议规范
+// 前端通过 EventSource 接收这些事件并解析 data 字段
 function sse(data: object) {
   return `data: ${JSON.stringify(data)}\n\n`
 }
 
-// 调用 Claude 流式 API
+// 【Skill Schema 构建】将 skills 转换为 Claude 的 tools 格式
+// 在 SSE 流开始前，将 skill 定义映射为 API 可用的 tool schema
 async function* streamClaude(
   messages: Message[],
   apiKey: string,
@@ -21,6 +28,8 @@ async function* streamClaude(
 ) {
   const client = new Anthropic({ apiKey })
 
+  // 【Skill 转 Tools】将 SkillDefinition[] 转换为 Claude API 的 tool 格式
+  // 这使得 LLM 知道有哪些工具可用及其参数结构
   const tools = skills.map(s => ({
     name: s.name,
     description: s.description,
@@ -109,9 +118,13 @@ async function* streamOpenAICompatible(
 
     let currentToolCall: any = null
 
+    console.log("==111=====", stream)
+
     for await (const chunk of stream) {
+      console.log("==22=====", chunk)
       const delta = chunk.choices[0]?.delta
 
+      console.log("==333=====", delta)
       if (delta?.content) {
         yield { type: 'text', content: delta.content }
       }
@@ -166,7 +179,9 @@ async function* streamOpenAICompatible(
 
 export async function POST(req: NextRequest) {
   try {
-    // 首次调用时初始化 skills
+    // 【Skill 初始化】首次调用时加载所有 skill 定义
+    // initSkills() 会扫描 skills/ 目录下的所有 skill 文件（包括 .md 和 .ts）
+    // 并将它们注册为可用的工具，供后续 SSE 流中调用
     if (!skillsInitialized) {
       await initSkills()
       skillsInitialized = true
@@ -174,6 +189,7 @@ export async function POST(req: NextRequest) {
 
     const { messages } = await req.json()
     const config = getModelConfig()
+    // 【获取 Skills】获取已加载的 skill 列表，用于构建传给 LLM 的 tool schema
     const skills = getSkills()
 
     if (config.provider !== 'ollama' && !config.apiKey) {
@@ -246,7 +262,11 @@ export async function POST(req: NextRequest) {
                     : chunk.input || chunk.arguments
                   toolCall.input = args
 
-                  // 执行工具
+                  // 【核心：Skill 工具执行】
+                  // 当 LLM 返回 tool_use 结束信号时，实际调用 executeSkill 函数
+                  // - chunk.name: skill 名称（如 "file", "search", "weather" 等）
+                  // - args: LLM 生成的参数，会传递给 skill.execute(input)
+                  // executeSkill 位于 skills/index.ts:62，会查找并执行对应的 skill
                   const output = await executeSkill(chunk.name, args)
                   toolCalls.push({
                     name: chunk.name,
@@ -271,7 +291,8 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // 如果有工具调用，再次调用模型获取最终回复
+          // 【二次调用】如果有 Skill 工具调用完成，将结果再次传给模型
+          // 这使得 LLM 能基于工具返回的实际数据生成最终回复
           if (toolCalls.length > 0) {
             controller.enqueue(encoder.encode(sse({ type: 'thinking' })))
 
