@@ -1,4 +1,4 @@
-import { SkillDefinition, executeSkill } from './index'
+import { SkillDefinition, executeSkill } from '../index'
 
 /**
  * Project Analyzer Skill

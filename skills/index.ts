@@ -1,13 +1,15 @@
-import { fileSkill } from './file'
+import { fileSkill } from './file-operations'
 import { searchSkill } from './search'
 import { createWeatherSkill } from './weather'
-import { projectAnalyzerSkill } from './project-analyzer'
+import { projectAnalyzerSkill } from './project-analysis'
 import { createCodeReviewSkill } from './code-review'
+import { countLinesSkill } from './count-lines'
 
 export interface SkillParameter {
   type: string
   description: string
   enum?: string[]
+  default?: any
 }
 
 export interface SkillDefinition {
@@ -25,7 +27,8 @@ export interface SkillDefinition {
 const syncSkills: SkillDefinition[] = [
   fileSkill,
   searchSkill,
-  projectAnalyzerSkill
+  projectAnalyzerSkill,
+  countLinesSkill
 ]
 
 // 异步加载所有 skills（包括从 Markdown 读取元数据的）

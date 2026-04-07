@@ -1,4 +1,4 @@
-import { SkillDefinition } from './index'
+import { SkillDefinition } from '../index'
 import fs from 'fs/promises'
 import path from 'path'
 

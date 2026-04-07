@@ -1,5 +1,5 @@
-import { SkillDefinition } from './index'
-import { parseMarkdownSkill } from './markdown-parser'
+import { SkillDefinition } from '../index'
+import { parseMarkdownSkill } from '../file-operations/markdown-parser'
 
 /**
  * 从 wttr.in 获取真实天气数据
@@ -67,13 +67,13 @@ async function fetchRealWeather(city: string): Promise<{
 }
 
 /**
- * 从 weather.md 创建天气 skill
+ * 从 index.md 创建天气 skill
  * 元数据(name/description/parameters)从 Markdown 读取
  * 执行逻辑在代码中实现
  */
 export async function createWeatherSkill(): Promise<SkillDefinition> {
   // 从 Markdown 文件读取元数据
-  const meta = await parseMarkdownSkill('skills/weather.md')
+  const meta = await parseMarkdownSkill('skills/weather/index.md')
 
   return {
     name: meta.name,

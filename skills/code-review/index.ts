@@ -1,12 +1,12 @@
-import { SkillDefinition, executeSkill } from './index'
-import { parseMarkdownSkill } from './markdown-parser'
+import { SkillDefinition, executeSkill } from '../index'
+import { parseMarkdownSkill } from '../file-operations/markdown-parser'
 
 /**
  * 创建代码审查 skill
  * 从 Markdown 读取元数据，实现中引用 file_operation skill
  */
 export async function createCodeReviewSkill(): Promise<SkillDefinition> {
-  const meta = await parseMarkdownSkill('skills/code-review.md')
+  const meta = await parseMarkdownSkill('skills/code-review/index.md')
 
   return {
     name: meta.name,
