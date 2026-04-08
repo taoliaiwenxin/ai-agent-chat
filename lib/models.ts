@@ -27,8 +27,8 @@ export interface ModelResponse {
 }
 
 // 获取当前配置的模型
-export function getModelConfig(): ModelConfig {
-  const provider = (process.env.AI_MODEL as ModelProvider) || 'claude'
+export function getModelConfig(preferredProvider?: ModelProvider): ModelConfig {
+  const provider = preferredProvider || (process.env.AI_MODEL as ModelProvider) || 'claude'
 
   switch (provider) {
     case 'openai':

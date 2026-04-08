@@ -187,8 +187,8 @@ export async function POST(req: NextRequest) {
       skillsInitialized = true
     }
 
-    const { messages } = await req.json()
-    const config = getModelConfig()
+    const { messages, provider: selectedProvider } = await req.json()
+    const config = getModelConfig(selectedProvider)
     // 【获取 Skills】获取已加载的 skill 列表，用于构建传给 LLM 的 tool schema
     const skills = getSkills()
 
